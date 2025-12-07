@@ -35,15 +35,17 @@ void runSimulation(bool rudderedConfig, const VectorXd& xtrim, const VectorXd& u
 
     // LQR gain
     MatrixXd Q = MatrixXd::Zero(12,12);
-    Q(9,9) = 1.0;
-    Q(10,10) = 1.0;
-    Q(11,11) = 1.0;
-
-    MatrixXd R = MatrixXd::Identity(4,4) * 55.0;
+    Q(9,9) = 0.1;
+    Q(10,10) = 0.1;
+    Q(11,11) = 0.1;
+  
+    Eigen::Vector4d diag_vals;
+    diag_vals << 5.25, 4.19, 10.48, 4.0;
+    Eigen::Matrix4d R = diag_vals.asDiagonal() * 55.0;
     MatrixXd K = Controllers::computeLQRGainFromContinuous(A, B, Q, R, dt);
 
     // Simulation Loop
-    MatrixXd hist(N+1, 12+4);
+    MatrixXd hist(N+1, 16);
     VectorXd x = xtrim;
     VectorXd u = utrim;
 
@@ -58,7 +60,7 @@ void runSimulation(bool rudderedConfig, const VectorXd& xtrim, const VectorXd& u
         if (!rudderedConfig)
             ufb(2) = Utils::clamp(ufb(2), -90.0*M_PI/180.0, 90.0*M_PI/180.0); // tail
         else
-            ufb(2) = Utils::clamp(ufb(2), -25.0*M_PI/180.0, 25.0*M_PI/180.0); // rudder
+            ufb(2) = Utils::clamp(ufb(2), -17.7*M_PI/180.0, 17.7*M_PI/180.0); // rudder
         ufb(3) = Utils::clamp(ufb(3), 0.0, 1.0); // throttle
 
         x = dyn.rk4Step(x, ufb, dt);
@@ -91,9 +93,10 @@ int main(){
 
     // Set ruddered trim state
     VectorXd xtrim_r = xtrim_rl;
+    xtrim_r(2) = 0.0197;
     VectorXd utrim_r = VectorXd::Zero(4);
-    utrim_r(1) = -0.04;      // elevator
-    utrim_r(3) = 0.2229;     // throttle
+    utrim_r(1) = -0.027;     // elevator
+    utrim_r(3) = 0.2333;     // throttle
 
     runSimulation(false, xtrim_rl, utrim_rl, dt, Tsim);  // rudderless
     runSimulation(true,  xtrim_r,  utrim_r,  dt, Tsim);  // ruddered
