@@ -25,8 +25,7 @@ Eigen::VectorXd Dynamics::f(const Eigen::VectorXd &x, const Eigen::VectorXd &u) 
   xdot(2) = acc(2);
 
   // Rotational dynamics
-  Eigen::Vector3d Iomega = I * omega;
-  Eigen::Vector3d omega_dot = I.inverse() * (M_body - omega.cross(Iomega));
+  Eigen::Vector3d omega_dot = I.inverse() * (M_body - omega.cross(I * omega));
   xdot(3) = omega_dot(0);
   xdot(4) = omega_dot(1);
   xdot(5) = omega_dot(2);
@@ -48,11 +47,19 @@ Eigen::VectorXd Dynamics::f(const Eigen::VectorXd &x, const Eigen::VectorXd &u) 
 
   // Navigation: body -> inertial
   double cpsi = std::cos(psi), spsi = std::sin(psi);
-  Eigen::Matrix3d R_b2i;
-  R_b2i << cth * cpsi, sphi*sth*cpsi - cphi*spsi, cphi*sth*cpsi + sphi*spsi,
-           cth * spsi, sphi*sth*spsi + cphi*cpsi, cphi*sth*spsi - sphi*cpsi,
-           -sth,       sphi*cth,                 cphi*cth;
-
+  Eigen::Matrix3d R_1v;
+  Eigen::Matrix3d R_21;
+  Eigen::Matrix3d R_b2;
+  R_1v  << cpsi,  spsi,  0,
+           -spsi, cpsi,  0,
+           0,     0,     1;
+  R_21  << cth,   0,     -sth,
+           0,     1,     0,
+           sth,   0,     cth;
+  R_b2  << 1,     0,     0,
+           0,     cphi,  sphi,
+           0,     -sphi, cphi;
+  Eigen::Matrix3d R_b2i = R_b2 * R_21 * R_1v;
   Eigen::Vector3d vel_inertial = R_b2i * vel;
   xdot(9)  = vel_inertial(0);
   xdot(10) = vel_inertial(1);
