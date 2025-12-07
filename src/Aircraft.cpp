@@ -1,17 +1,8 @@
 #define _USE_MATH_DEFINES
 #include "Aircraft.h"
 #include <cmath>
-#include <algorithm>
 
-Aircraft::Aircraft(const AircraftParams &p) : params(p) {
-  if (params.inertiaMat.isZero(0)) {
-    Eigen::Matrix3d I; // Van Dyke, Eq 3.1
-    I << 197.2026, 0.0, 146.0218,
-         0.0, 1808.7634, 0.0,
-         146.0218, 0.0, 1611.5609;
-    const_cast<AircraftParams&>(params).inertiaMat = I;
-  }
-}
+Aircraft::Aircraft(const AircraftParams &p) : params(p) {}
 
 void Aircraft::aeroCoeffs(double alpha, double beta,
                          double delta_a, double delta_e, double delta_r, double delta_tail,
@@ -36,30 +27,43 @@ void Aircraft::computeForcesMoments(const Eigen::VectorXd &x, const Eigen::Vecto
   const double u_b = x(0), v_b = x(1), w_b = x(2);
   const double p = x(3), q = x(4), r = x(5);
   const double phi = x(6), theta = x(7), psi = x(8);
+
+  // Airspeed and angles
   const double V = std::sqrt(u_b*u_b + v_b*v_b + w_b*w_b);
   double alpha = 0.0, beta = 0.0;
   if (V > 1e-6) {
     alpha = std::atan2(w_b, u_b);
     beta  = std::asin(std::clamp(v_b / V, -1.0, 1.0));
   }
+
+  // Controls
   double delta_a = u(0), delta_e = u(1), delta3 = u(2), delta_t = u(3);
   double delta_r = params.ruddered ? delta3 : 0.0;
   double delta_tail = params.ruddered ? 0.0 : delta3;
   double CL, CD, CY;
   aeroCoeffs(alpha, beta, delta_a, delta_e, delta_r, delta_tail, CL, CD, CY);
   const double qbar = 0.5 * params.rho * V * V;
+  const double qS   = qbar * params.S;
 
-  // Forces via lift/drag projection
-  const double Lift = CL * qbar * params.S;
-  const double Drag = CD * qbar * params.S;
-  const double Side = CY * qbar * params.S;
-  const double X_aero = -Drag * std::cos(alpha) + Lift * std::sin(alpha);
-  const double Z_aero = -Drag * std::sin(alpha) - Lift * std::cos(alpha);
-  const double Y_aero = Side;
+  Eigen::Vector3d F_stab;
+  const double Lift = CL * qS;
+  const double Drag = CD * qS;
+  const double Side = CY * qS;
+
+  // Rotate forces from stability -> body using rotation about Y
+  const double ca = std::cos(alpha);
+  const double sa = std::sin(alpha);
+  Eigen::Matrix3d R_s2b;
+  R_s2b <<  ca,  0.0, -sa,
+            0.0, 1.0,  0.0,
+            sa,  0.0,  ca;
+
+  Eigen::Vector3d F_b = R_s2b * F_stab;
   const double Fthrust = 0.25 * params.m * params.g * delta_t;
 
   // Total Body Forces
-  F_body = Eigen::Vector3d(X_aero + Fthrust, Y_aero, Z_aero);
+  F_b(0) += Fthrust;
+  F_body = F_b;
 
   // Moments
   Eigen::Vector3d etaBar;
@@ -116,12 +120,13 @@ void Aircraft::computeForcesMoments(const Eigen::VectorXd &x, const Eigen::Vecto
 
   // Dynamic term scaling
   Eigen::Vector3d omega(p, q, r);
-  Eigen::Vector3d dynTerm = dC_domega * (omega * (params.cref / std::max(V, 1e-6)));
+  Eigen::Vector3d dynTerm = Eigen::Vector3d::Zero();
+  if (V > 1e-8) {
+    dynTerm = dC_domega * (omega * (params.cref / V));
+  }
 
   // Control term
   Eigen::Vector3d ctrlTerm;
-
-  // Ordered control vector
   ctrlTerm(0) = dC_du(0,0) * delta_a + dC_du(0,1) * delta_e + dC_du(0,2) * delta3;
   ctrlTerm(1) = dC_du(1,0) * delta_a + dC_du(1,1) * delta_e + dC_du(1,2) * delta3;
   ctrlTerm(2) = dC_du(2,0) * delta_a + dC_du(2,1) * delta_e + dC_du(2,2) * delta3;
@@ -129,10 +134,11 @@ void Aircraft::computeForcesMoments(const Eigen::VectorXd &x, const Eigen::Vecto
   Eigen::Vector3d Cvec = etaBar + dynTerm + ctrlTerm;
 
   double Cl = Cvec(0), Cm = Cvec(1), Cn = Cvec(2);
-  double qbar_local = qbar;
-  const double Mx = Cl * qbar_local * params.S * params.bref;
-  const double My = Cm * qbar_local * params.S * params.cref;
-  const double Mz = Cn * qbar_local * params.S * params.bref;
+  Eigen::Vector3d M_stab;
+  M_stab(0) = Cl * qS * params.bref;   // roll moment (stability)
+  M_stab(1) = Cm * qS * params.cref;   // pitch moment
+  M_stab(2) = Cn * qS * params.bref;   // yaw moment
 
-  M_body = Eigen::Vector3d(Mx, My, Mz);
+  Eigen::Vector3d M_b = R_s2b * M_stab;
+  M_body = M_b;
 }
