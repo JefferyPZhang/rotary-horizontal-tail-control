@@ -46,9 +46,9 @@ void Aircraft::computeForcesMoments(const Eigen::VectorXd &x, const Eigen::Vecto
   const double qS   = qbar * params.S;
 
   Eigen::Vector3d F_stab;
-  const double Lift = CL * qS;
-  const double Drag = CD * qS;
-  const double Side = CY * qS;
+  F_stab(0) = -CD * qS;  // Drag acts opposite the relative wind
+  F_stab(1) =  CY * qS;  // Side force
+  F_stab(2) = -CL * qS;  // Lift acts upward in body coordinates
 
   // Rotate forces from stability -> body using rotation about Y
   const double ca = std::cos(alpha);
