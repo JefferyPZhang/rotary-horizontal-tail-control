@@ -27,15 +27,11 @@ void runSimulation(bool rudderedConfig, const VectorXd& xtrim, const VectorXd& u
     Aircraft ac(params);
     Dynamics dyn(ac);
 
-    // ---------------------------
-    // 1. Compute linear model A,B
-    // ---------------------------
+    // Compute linear model A,B
     MatrixXd A, B;
     dyn.linearizeAt(xtrim, utrim, A, B, 1e-6);
 
-    // ---------------------------
-    // 2. Compute LQR gain K
-    // ---------------------------
+    // Compute LQR gain K
     MatrixXd Q = MatrixXd::Zero(12,12);
     Q(9,9) = 0.1; Q(10,10) = 0.1; Q(11,11) = 0.1;
 
@@ -45,9 +41,7 @@ void runSimulation(bool rudderedConfig, const VectorXd& xtrim, const VectorXd& u
 
     MatrixXd K = Controllers::computeLQRGainFromContinuous(A, B, Q, R, dt);
 
-    // ---------------------------
-    // 3. Save Linear Model
-    // ---------------------------
+    // Save Linear Model
     if (rudderedConfig) {
         Utils::writeCSV("output/A_ruddered.csv", A);
         Utils::writeCSV("output/B_ruddered.csv", B);
@@ -58,9 +52,7 @@ void runSimulation(bool rudderedConfig, const VectorXd& xtrim, const VectorXd& u
         Utils::writeCSV("output/K_rudderless.csv", K);
     }
 
-    // ---------------------------
-    // 4. Run Nonlinear Simulation
-    // ---------------------------
+    // Run Nonlinear Simulation
     MatrixXd hist(N+1, 16);
     VectorXd x = xtrim;
     VectorXd u = utrim;
